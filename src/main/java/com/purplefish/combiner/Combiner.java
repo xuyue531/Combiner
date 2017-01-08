@@ -20,6 +20,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <T> 数据聚合维度
  * @param <K>
  * @param <V>
+ *
+ * TODO
+ *      1. 增加配置文件读取功能，线程池大小等参数需要用户可配置
+ *      2. 实时QPS探测，动态调整聚合等待时间
+ *      3. 完善Future
+ *      4. Combiner自身状态检测
  * Created by xuyue on 2016/12/24.
  */
 public class Combiner<T, K, V> {
@@ -92,6 +98,10 @@ public class Combiner<T, K, V> {
     public Combiner maxCapacity(int capacity){
         this.maxCapacity = capacity;
         return this;
+    }
+
+    public int getMaxCapacity(){
+        return maxCapacity;
     }
 
     /**

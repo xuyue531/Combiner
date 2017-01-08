@@ -31,12 +31,6 @@ public interface CombineFuture extends Future {
     public long willWait();
 
     /**
-     * 当前合并执行的速率
-     * @return
-     */
-    public int combineRate();
-
-    /**
      * 当前允许的最大数据量
      * @return
      */

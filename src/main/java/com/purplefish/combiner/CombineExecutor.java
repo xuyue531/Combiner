@@ -27,4 +27,15 @@ public interface CombineExecutor<T, K, V> extends Callable<Boolean> {
 
     public boolean isReleased();
 
+    public int amount();
+
+    public int maxCapacity();
+
+    public boolean remove(long submitId);
+
+    public boolean isExist(long submitId);
+
+    public boolean isDone();
+
+    public boolean isSuccess();
 }

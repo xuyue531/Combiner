@@ -38,4 +38,8 @@ public class SubmitData<K, V> {
     public void setValueMap(Map<K, V> valueMap) {
         this.valueMap = valueMap;
     }
+
+    public int dataAmount(){
+        return valueMap.size();
+    }
 }

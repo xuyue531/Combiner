@@ -10,44 +10,46 @@ import java.util.concurrent.TimeoutException;
 public class SubmitFuture implements CombineFuture {
 
     private CombineExecutor executor;
+    private long submitId;
 
-    public SubmitFuture(CombineExecutor executor) {
+    public SubmitFuture(CombineExecutor executor, long submitId) {
         this.executor = executor;
+        this.submitId = submitId;
     }
 
     @Override
     public int amount() {
-        return 0;
+        return executor.amount();
     }
 
     @Override
     public long willWait() {
-        return 0;
-    }
-
-    @Override
-    public int combineRate() {
-        return 0;
+        return executor.willWait();
     }
 
     @Override
     public int maxCapacity() {
-        return 0;
+        return executor.maxCapacity();
     }
 
+    /**
+     * 删除submintId对应的数据
+     * @param mayInterruptIfRunning
+     * @return
+     */
     @Override
     public boolean cancel(boolean mayInterruptIfRunning) {
-        return false;
+        return executor.remove(submitId);
     }
 
     @Override
     public boolean isCancelled() {
-        return false;
+        return executor.isExist(submitId);
     }
 
     @Override
     public boolean isDone() {
-        return false;
+        return executor.isDone();
     }
 
     @Override
