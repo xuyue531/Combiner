@@ -166,8 +166,9 @@ public class Combiner<T, K, V> {
      */
     public CombineFuture submit(T combine, SubmitData<K, V> data){
         boolean isSubmitSuccess = false;
+        CombineExecutor<T, K, V> executor = null;
         while (!isSubmitSuccess){
-            CombineExecutor<T, K, V> executor = combineExecutors.get(combine);
+            executor = combineExecutors.get(combine);
             if (executor == null){
                 //如果不存在批量执行者，则创建
                 execLock.lock();
@@ -185,7 +186,14 @@ public class Combiner<T, K, V> {
             isSubmitSuccess = executor.submitData(data);
         }
         //create future
-        return null;
+        CombineFuture future;
+        if (isSubmitSuccess && executor != null){
+            future = new SubmitFuture<K, V>(executor, data);
+        }else {
+            //优化
+            future = null;
+        }
+        return future;
     }
 
 

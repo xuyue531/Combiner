@@ -7,6 +7,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -38,17 +39,24 @@ public class CombinerTest {
 
     @Test
     public void test() throws InterruptedException {
-        for (int i = 0; i < 10000; ++i){
+        for (int i = 0; i < 20; ++i){
             final String combineId = combineIds.get(i%combineIds.size());
             final String id = Integer.toString(i);
             final Integer value = i;
             pool.submit(new Runnable() {
                 @Override
                 public void run() {
-                    combiner.submit(combineId, id, value);
+                    CombineFuture future = combiner.submit(combineId, id, value);
+                    try {
+                        System.out.println("==============>" + future.get());
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    } catch (ExecutionException e) {
+                        e.printStackTrace();
+                    }
                 }
             });
-//            Thread.currentThread().sleep(1);
+//            Thread.currentThread().sleep(10);
         }
         try {
             Thread.currentThread().sleep(3000);

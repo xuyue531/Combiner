@@ -1,5 +1,6 @@
 package com.purplefish.combiner;
 
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -7,14 +8,16 @@ import java.util.concurrent.TimeoutException;
 /**
  * Created by xuyue on 2016/12/28.
  */
-public class SubmitFuture implements CombineFuture {
+public class SubmitFuture<K, V> implements CombineFuture {
 
     private CombineExecutor executor;
     private long submitId;
+    private Map<K, V> submitData;
 
-    public SubmitFuture(CombineExecutor executor, long submitId) {
+    public SubmitFuture(CombineExecutor executor, SubmitData data) {
         this.executor = executor;
-        this.submitId = submitId;
+        this.submitId = data.getSubmitId();
+        this.submitData = data.getValueMap();
     }
 
     @Override
@@ -54,11 +57,11 @@ public class SubmitFuture implements CombineFuture {
 
     @Override
     public Object get() throws InterruptedException, ExecutionException {
-        return null;
+        return executor.getResult();
     }
 
     @Override
     public Object get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-        return null;
+        return executor.getResult(timeout, unit);
     }
 }

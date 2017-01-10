@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -34,6 +35,7 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
     private volatile boolean isSuccess = false;
     //用于实现与各个future之间的通知机制
     private ReentrantLock callLock = new ReentrantLock();
+    private Condition condition = callLock.newCondition();
 
 
     /**
@@ -50,7 +52,7 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
 
     @Override
     public boolean submitData(SubmitData<K, V> data) {
-        if (isRelease){
+        if (isRelease) {
             return false;
         }
         datas.put(data.getSubmitId(), data);
@@ -93,7 +95,7 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
     @Override
     public int amount() {
         int totalAmount = 0;
-        for (SubmitData data : datas.values()){
+        for (SubmitData data : datas.values()) {
             totalAmount += totalAmount + data.dataAmount();
         }
         return totalAmount;
@@ -107,23 +109,24 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
     /**
      * 移除submit对应的数据项
      * 几个问题：
-     *  1. 如果id本身就在datas中不存在，返回true还是false
-     *  2. 如果移除的数据的id和传入的id不一致，返回true还是false
-     *  3. 不同的失败原因是否需要在返回值中体现（将返回值以枚举或者int返回）
+     * 1. 如果id本身就在datas中不存在，返回true还是false
+     * 2. 如果移除的数据的id和传入的id不一致，返回true还是false
+     * 3. 不同的失败原因是否需要在返回值中体现（将返回值以枚举或者int返回）
+     *
      * @param submitId
      * @return
      */
     @Override
     public boolean remove(long submitId) {
-        if (isRelease){
+        if (isRelease) {
             return false;
         }
         try {
             SubmitData data = datas.remove(submitId);
-            if (data.getSubmitId() != submitId){
+            if (data == null || data.getSubmitId() != submitId) {
                 return false;
             }
-        }catch (NullPointerException e){
+        } catch (NullPointerException e) {
             return false;
         }
         return true;
@@ -142,23 +145,79 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
 
     @Override
     public boolean isSuccess() {
-        if (isDone){
+        if (isDone) {
             return isSuccess;
-        }else {
+        } else {
             return false;
         }
+    }
+
+    /**
+     * 获取批量执行结果(阻塞接口)
+     * @return
+     */
+    @Override
+    public boolean getResult() {
+        if (isDone) {
+            return isSuccess;
+        }
+        callLock.lock();
+        try {
+            if (isDone) {
+                return isSuccess;
+            }
+            condition.await();
+            return isSuccess;
+        } catch (InterruptedException e) {
+        } finally {
+            callLock.unlock();
+        }
+        return false;
+    }
+
+    /**
+     * 获取批量执行结果(带超时接口)
+     * @param timeout
+     * @param unit
+     * @return
+     */
+    @Override
+    public boolean getResult(long timeout, TimeUnit unit) {
+        if (isDone){
+            return isSuccess;
+        }
+        callLock.lock();
+        try {
+            if (isDone){
+                return isSuccess;
+            }
+            condition.await(timeout, unit);
+            if (isDone){
+                return isSuccess;
+            }
+        } catch (InterruptedException e) {
+        } finally {
+            callLock.unlock();
+        }
+        return false;
     }
 
 
     @Override
     public Boolean call() throws Exception {
         boolean isSuccess = false;
-        while (combiner.release(combineId)){
-            isSuccess = combiner.getRunner().run(combineId, datas.values());
-            break;
+        callLock.lock();
+        try {
+            while (combiner.release(combineId)) {
+                isSuccess = combiner.getRunner().run(combineId, datas.values());
+                break;
+            }
+            isDone = true;
+            this.isSuccess = isSuccess;
+            condition.signalAll();
+        } finally {
+            callLock.unlock();
         }
-        isDone = true;
-        this.isSuccess = isSuccess;
         return isSuccess;
     }
 }

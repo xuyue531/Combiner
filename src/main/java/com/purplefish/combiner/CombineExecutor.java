@@ -2,6 +2,8 @@ package com.purplefish.combiner;
 
 import java.util.Collection;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 批量操作执行器
@@ -38,4 +40,8 @@ public interface CombineExecutor<T, K, V> extends Callable<Boolean> {
     public boolean isDone();
 
     public boolean isSuccess();
+
+    public boolean getResult();
+
+    public boolean getResult(long timeout, TimeUnit unit);
 }
