@@ -56,9 +56,6 @@ public class RollingNumber {
      * Construct a counter, with configurable properties for how many buckets, and how long of an interval to track
      * @param timeInMilliseconds length of time to report metrics over
      * @param numberOfBuckets number of buckets to use
-     *
-     * @deprecated Please use {@link RollingNumber (int, int) instead}.  These values are no longer allowed to
-     * be updated at runtime.
      */
     public RollingNumber(int timeInMilliseconds, int numberOfBuckets) {
         this(ACTUAL_TIME, timeInMilliseconds, numberOfBuckets);

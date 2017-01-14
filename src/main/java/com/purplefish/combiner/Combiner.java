@@ -1,12 +1,15 @@
 package com.purplefish.combiner;
 
 import com.purplefish.combiner.api.CombineRunner;
+import com.purplefish.combiner.common.RollingNumber;
+import com.purplefish.combiner.common.RollingNumberEvent;
 import com.purplefish.combiner.utils.ConsistUtils;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -23,9 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * TODO
  *      1. 增加配置文件读取功能，线程池大小等参数需要用户可配置
- *      2. 实时QPS探测，动态调整聚合等待时间
- *      3. 完善Future
- *      4. Combiner自身状态检测
+ *      2. 基于自身数据量的批量执行策略
  * Created by xuyue on 2016/12/24.
  */
 public class Combiner<T, K, V> {
@@ -40,9 +41,12 @@ public class Combiner<T, K, V> {
     private CombineRunner<T, K, V> runner;
 
     private float rate = 10;
+    private int expTimePerExe = 100;
+    private int effective = 10;
     private int maxCapacity = Integer.MAX_VALUE;
+    private int cyclicalTaskPeriod = 10;
     //批量执行等待时间，如何清除过期的项，定期重建？
-    private Map<T, Long> delayTime = new ConcurrentHashMap<T, Long>();
+    private Map<T, RollingNumber> delayTime = new ConcurrentHashMap<T, RollingNumber>();
     //新增executor的时候，防止重复创建，需要加锁
     private ReentrantLock execLock = new ReentrantLock();
 
@@ -52,9 +56,10 @@ public class Combiner<T, K, V> {
      * 强制使用Builder模式创建，以检查参数设置是否安全
      */
     private Combiner() {
+        combineExecutors = new ConcurrentHashMap<T, CombineExecutor>();
         scheduledService = Executors.newScheduledThreadPool(5);
         CombinerService = Executors.newScheduledThreadPool(1);
-        combineExecutors = new ConcurrentHashMap<T, CombineExecutor>();
+        CombinerService.scheduleAtFixedRate(new CyclicalTask(), cyclicalTaskPeriod, cyclicalTaskPeriod, TimeUnit.MINUTES);
     }
 
     /**
@@ -138,10 +143,26 @@ public class Combiner<T, K, V> {
         if (!delayTime.containsKey(combine)){
             return 100;
         }else {
-            return delayTime.get(combine);
+            return dynamicDelayTime(delayTime.get(combine).getRollingSum(RollingNumberEvent.SUBMIT));
         }
     }
 
+    /**
+     * 根据实时的Qps计算需要delay的时间
+     * @param qps
+     * @return
+     */
+    private long dynamicDelayTime(long qps) {
+        if (qps < rate){
+            return 0;
+        }
+        int millsPerRequest = (int) (1000/qps);
+        int v = (int) ((rate * effective) / qps);
+        if (v == 0){
+            return expTimePerExe - millsPerRequest;
+        }
+        return (expTimePerExe - millsPerRequest) >> (v - 1);
+    }
 
     public CombineFuture submit(T combine, K key, V val){
         long submitId = ConsistUtils.generateRTId();
@@ -165,6 +186,19 @@ public class Combiner<T, K, V> {
      * @return
      */
     public CombineFuture submit(T combine, SubmitData<K, V> data){
+        /**
+         * 统计该combine下提交数据的qps
+         */
+        RollingNumber counter = delayTime.get(combine);
+        if (counter == null){
+            counter = new RollingNumber(1000, 10);
+            delayTime.put(combine, counter);
+        }
+        counter.increment(RollingNumberEvent.SUBMIT);
+
+        /**
+         * do submit
+         */
         boolean isSubmitSuccess = false;
         CombineExecutor<T, K, V> executor = null;
         while (!isSubmitSuccess){
@@ -185,7 +219,10 @@ public class Combiner<T, K, V> {
             }
             isSubmitSuccess = executor.submitData(data);
         }
-        //create future
+
+        /**
+         * create future
+         */
         CombineFuture future;
         if (isSubmitSuccess && executor != null){
             future = new SubmitFuture<K, V>(executor, data);
@@ -194,6 +231,20 @@ public class Combiner<T, K, V> {
             future = null;
         }
         return future;
+    }
+
+
+    /**
+     * 定时对Combiner本身的一些状态做检查和清理
+     */
+    class CyclicalTask implements Runnable{
+
+        @Override
+        public void run() {
+            if (delayTime.size() > 10000){
+                delayTime = new ConcurrentHashMap<T, RollingNumber>();
+            }
+        }
     }
 
 
@@ -207,6 +258,7 @@ public class Combiner<T, K, V> {
 
         public CombinerBuilder maxRate(float rate){
             this.combiner.maxRate(rate);
+            this.combiner.expTimePerExe = (int) (1000/rate);
             return this;
         }
 

@@ -56,6 +56,11 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
             return false;
         }
         datas.put(data.getSubmitId(), data);
+        if (delayTime < 5){
+            try {
+                call();
+            } catch (Exception e) {}
+        }
         return true;
     }
 
@@ -77,9 +82,12 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
 
     @Override
     public void go() {
+        this.goTime = System.currentTimeMillis();
+        if (delayTime < 5){
+            return;
+        }
         this.scheduledFuture =
                 combiner.getScheduledService().schedule(this, delayTime, TimeUnit.MILLISECONDS);
-        this.goTime = System.currentTimeMillis();
     }
 
     @Override
