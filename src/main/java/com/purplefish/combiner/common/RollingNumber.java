@@ -51,7 +51,6 @@ public class RollingNumber {
     final int bucketSizeInMillseconds;
 
     final BucketCircularArray buckets;
-    private final CumulativeSum cumulativeSum = new CumulativeSum();
 
     /**
      * Construct a counter, with configurable properties for how many buckets, and how long of an interval to track
@@ -112,29 +111,9 @@ public class RollingNumber {
     public void reset() {
         // if we are resetting, that means the lastBucket won't have a chance to be captured in CumulativeSum, so let's do it here
         Bucket lastBucket = buckets.peekLast();
-        if (lastBucket != null) {
-            cumulativeSum.addBucket(lastBucket);
-        }
 
         // clear buckets so we start over again
         buckets.clear();
-    }
-
-    /**
-     * Get the cumulative sum of all buckets ever since the JVM started without rolling for the given {@link RollingNumberEvent} type.
-     * <p>
-     * See {@link #getRollingSum(RollingNumberEvent)} for the rolling sum.
-     * <p>
-     * The {@link RollingNumberEvent} must be a "counter" type <code>RollingNumberEvent.isCounter() == true</code>.
-     * 
-     * @param type RollingNumberEvent defining which counter to retrieve values from
-     * @return cumulative sum of all increments and adds for the given {@link RollingNumberEvent} counter type
-     */
-    public long getCumulativeSum(RollingNumberEvent type) {
-        // this isn't 100% atomic since multiple threads can be affecting latestBucket & cumulativeSum independently
-        // but that's okay since the count is always a moving target and we're accepting a "point in time" best attempt
-        // we are however putting 'getValueOfLatestBucket' first since it can have side-affects on cumulativeSum whereas the inverse is not true
-        return getValueOfLatestBucket(type) + cumulativeSum.get(type);
     }
 
     /**
@@ -296,8 +275,6 @@ public class RollingNumber {
                         } else { // we're past the window so we need to create a new bucket
                             // create a new bucket and add it as the new 'last'
                             buckets.addLast(new Bucket(lastBucket.windowStart + this.bucketSizeInMillseconds));
-                            // add the lastBucket values to the cumulativeSum
-                            cumulativeSum.addBucket(lastBucket);
                         }
                     }
                     // we have finished the for-loop and created all of the buckets, so return the lastBucket now
@@ -375,74 +352,6 @@ public class RollingNumber {
                 throw new IllegalStateException("Type is not a Counter: " + type.name());
             }
             return adderForCounterType[type.ordinal()];
-        }
-
-    }
-
-    /**
-     * Cumulative counters (from start of JVM) from each Type
-     */
-    /* package */static class CumulativeSum {
-        final LongAdder[] adderForCounterType;
-        final LongMaxUpdater[] updaterForCounterType;
-
-        CumulativeSum() {
-
-            /*
-             * We support both LongAdder and LongMaxUpdater in a bucket but don't want the memory allocation
-             * of all types for each so we only allocate the objects if the RollingNumberEvent matches
-             * the correct type - though we still have the allocation of empty arrays to the given length
-             * as we want to keep using the type.ordinal() value for fast random access.
-             */
-
-            // initialize the array of LongAdders
-            adderForCounterType = new LongAdder[RollingNumberEvent.values().length];
-            for (RollingNumberEvent type : RollingNumberEvent.values()) {
-                if (type.isCounter()) {
-                    adderForCounterType[type.ordinal()] = new LongAdder();
-                }
-            }
-
-            updaterForCounterType = new LongMaxUpdater[RollingNumberEvent.values().length];
-            for (RollingNumberEvent type : RollingNumberEvent.values()) {
-                if (type.isMaxUpdater()) {
-                    updaterForCounterType[type.ordinal()] = new LongMaxUpdater();
-                    // initialize to 0 otherwise it is Long.MIN_VALUE
-                    updaterForCounterType[type.ordinal()].update(0);
-                }
-            }
-        }
-
-        public void addBucket(Bucket lastBucket) {
-            for (RollingNumberEvent type : RollingNumberEvent.values()) {
-                if (type.isCounter()) {
-                    getAdder(type).add(lastBucket.getAdder(type).sum());
-                }
-            }
-        }
-
-        long get(RollingNumberEvent type) {
-            if (type.isCounter()) {
-                return adderForCounterType[type.ordinal()].sum();
-            }
-            if (type.isMaxUpdater()) {
-                return updaterForCounterType[type.ordinal()].max();
-            }
-            throw new IllegalStateException("Unknown type of event: " + type.name());
-        }
-
-        LongAdder getAdder(RollingNumberEvent type) {
-            if (!type.isCounter()) {
-                throw new IllegalStateException("Type is not a Counter: " + type.name());
-            }
-            return adderForCounterType[type.ordinal()];
-        }
-
-        LongMaxUpdater getMaxUpdater(RollingNumberEvent type) {
-            if (!type.isMaxUpdater()) {
-                throw new IllegalStateException("Type is not a MaxUpdater: " + type.name());
-            }
-            return updaterForCounterType[type.ordinal()];
         }
 
     }
