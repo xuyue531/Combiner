@@ -56,7 +56,10 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
             return false;
         }
         datas.put(data.getSubmitId(), data);
-        if (delayTime < 5){
+        //delay时间太短 或者 数据量达到限制大小 则直接执行
+        if (delayTime >= 5 && amount() >= maxCapacity()){
+            runRightNow();
+        }else if (delayTime < 5){
             try {
                 call();
             } catch (Exception e) {}
@@ -210,21 +213,36 @@ public class DefaultCombineExecutor<T, K, V> implements CombineExecutor<T, K, V>
         return false;
     }
 
+    /**
+     * 当数据量达到限制条件，则立即执行
+     * @return
+     */
+    @Override
+    public void runRightNow() {
+        if (!isDone && scheduledFuture.cancel(false)){
+            try {
+                call();
+            } catch (Exception e) {}
+        }
+    }
+
 
     @Override
     public Boolean call() throws Exception {
-        boolean isSuccess = false;
-        callLock.lock();
-        try {
-            while (combiner.release(combineId)) {
-                isSuccess = combiner.getRunner().run(combineId, datas.values());
-                break;
+        if (!isDone){
+            callLock.lock();
+            try {
+                if (!isDone){
+                    while (combiner.release(combineId)) {
+                        isSuccess = combiner.getRunner().run(combineId, datas.values());
+                        break;
+                    }
+                    isDone = true;
+                    condition.signalAll();
+                }
+            } finally {
+                callLock.unlock();
             }
-            isDone = true;
-            this.isSuccess = isSuccess;
-            condition.signalAll();
-        } finally {
-            callLock.unlock();
         }
         return isSuccess;
     }

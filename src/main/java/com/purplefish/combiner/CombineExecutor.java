@@ -44,4 +44,6 @@ public interface CombineExecutor<T, K, V> extends Callable<Boolean> {
     public boolean getResult();
 
     public boolean getResult(long timeout, TimeUnit unit);
+
+    public void runRightNow();
 }
