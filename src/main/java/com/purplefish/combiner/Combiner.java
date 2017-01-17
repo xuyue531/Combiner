@@ -3,6 +3,7 @@ package com.purplefish.combiner;
 import com.purplefish.combiner.api.CombineRunner;
 import com.purplefish.combiner.common.RollingNumber;
 import com.purplefish.combiner.common.RollingNumberEvent;
+import com.purplefish.combiner.conf.ProfConfig;
 import com.purplefish.combiner.utils.ConsistUtils;
 
 import java.util.Map;
@@ -26,22 +27,26 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * TODO
  *      1. 增加配置文件读取功能，线程池大小等参数需要用户可配置
- *      2. 基于自身数据量的批量执行策略
  * Created by xuyue on 2016/12/24.
  */
 public class Combiner<T, K, V> {
 
     //批量操作执行器，不同的数据聚合ID拥有独立的执行器
-    private Map<T, CombineExecutor> combineExecutors;
+    private Map<T, CombineExecutor> combineExecutors = new ConcurrentHashMap<T, CombineExecutor>();
     //所有批量操作的定时执行线程池
     private ScheduledExecutorService scheduledService;
     //Combiner自身状态的定时扫描
-    private ScheduledExecutorService CombinerService;
+    private ScheduledExecutorService CombinerService = Executors.newScheduledThreadPool(1);
     //最终的批量操作类，需要用户提供实现，被CombineExecutor调用
     private CombineRunner<T, K, V> runner;
 
     private float rate = 10;
     private int expTimePerExe = 100;
+    /**
+     * 期望的combine价值，即在一个等待周期内m个操作combine成n个批量操作的最低期望比值
+     * 若实际价值小于期望价值，则以2的指数级压缩等待周期
+     * 具体实现见{@link Combiner#dynamicDelayTime}
+     */
     private int effective = 10;
     private int maxCapacity = Integer.MAX_VALUE;
     private int cyclicalTaskPeriod = 10;
@@ -56,9 +61,17 @@ public class Combiner<T, K, V> {
      * 强制使用Builder模式创建，以检查参数设置是否安全
      */
     private Combiner() {
-        combineExecutors = new ConcurrentHashMap<T, CombineExecutor>();
         scheduledService = Executors.newScheduledThreadPool(5);
-        CombinerService = Executors.newScheduledThreadPool(1);
+        CombinerService.scheduleAtFixedRate(new CyclicalTask(), cyclicalTaskPeriod, cyclicalTaskPeriod, TimeUnit.MINUTES);
+    }
+
+    private Combiner(ProfConfig config){
+        int pool = config.getCombinePool();
+        cyclicalTaskPeriod = config.getCyclicalTaskPeriod();
+        rate = config.getRate();
+        maxCapacity = config.getCapacity();
+        effective = config.getEffective();
+        scheduledService = Executors.newScheduledThreadPool(pool);
         CombinerService.scheduleAtFixedRate(new CyclicalTask(), cyclicalTaskPeriod, cyclicalTaskPeriod, TimeUnit.MINUTES);
     }
 
@@ -153,10 +166,12 @@ public class Combiner<T, K, V> {
      * @return
      */
     private long dynamicDelayTime(long qps) {
-        if (qps < rate){
+        if (qps <= rate){
             return 0;
         }
+        //每个请求消耗的时间
         int millsPerRequest = (int) (1000/qps);
+        //与期望combine价值的比值：effective/(qps/rate)
         int v = (int) ((rate * effective) / qps);
         if (v == 0){
             return expTimePerExe - millsPerRequest;
@@ -250,10 +265,12 @@ public class Combiner<T, K, V> {
 
     static class CombinerBuilder<T, K, V> {
 
-        private Combiner<T, K, V> combiner = new Combiner<T, K, V>();
+        private Combiner<T, K, V> combiner;
+        private ProfConfig config;
 
         public CombinerBuilder() {
-
+            config = new ProfConfig();
+            combiner = new Combiner<T, K, V>(config);
         }
 
         public CombinerBuilder maxRate(float rate){

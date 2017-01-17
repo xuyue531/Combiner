@@ -21,102 +21,32 @@ public class ProfConfig {
     /**
      * 配置文件名
      */
-    private static final String CONFIG_FILE_NAME = "profile.properties";
+    private static final String CONFIG_FILE_NAME = "combiner.properties";
 
     /**
-     * 默认的配置文件路径，~/.tprofiler/profile.properties
+     * 默认的配置文件路径，~/.combiner/profile.properties
      */
-    private File DEFAULT_PROFILE_PATH = new File(System.getProperty("user.home"), "/.tprofiler/" + CONFIG_FILE_NAME);
+    private File DEFAULT_PROFILE_PATH = new File(System.getProperty("user.home"), "/.combiner/" + CONFIG_FILE_NAME);
 
-
-    /**
-     * 开始profile时间
-     */
-    private String startProfTime;
-
-    /**
-     * 结束profile时间
-     */
-    private String endProfTime;
-
-    /**
-     * log文件路径
-     */
-    private String logFilePath;
-
-    /**
-     * method文件路径
-     */
-    private String methodFilePath;
-
-    /**
-     * sampler文件路径
-     */
-    private String samplerFilePath;
-
-    /**
-     * 不包括的ClassLoader
-     */
-    private String excludeClassLoader;
-
-    /**
-     * 包括的包名
-     */
-    private String includePackageStartsWith;
-
-    /**
-     * 不包括的包名
-     */
-    private String excludePackageStartsWith;
-
-    /**
-     * 每次profile用时
-     */
-    private int eachProfUseTime = -1;
-
-    /**
-     * 两次profile间隔时间
-     */
-    private int eachProfIntervalTime = -1;
-
-    /**
-     * 两次sampler间隔时间
-     */
-    private int samplerIntervalTime = -1;
-
-    /**
-     * 是否用纳秒采集
-     */
-    private boolean needNanoTime;
-
-    /**
-     * 是否忽略get/set方法
-     */
-    private boolean ignoreGetSetMethod;
-
-    /**
-     * 是否进入调试模式
-     */
-    private boolean debugMode;
-
-    /**
-     * Socket端口号配置
-     */
-    private int port;
+    private int rate;
+    private int capacity;
+    private int effective;
+    private int cyclicalTaskPeriod;
+    private int combinePool;
 
     /**
      * 构造方法
      */
     public ProfConfig() {
 
-        //此时配置文件中的debug参数还未读取，因此使用-Dtprofiler.debug=true来读取，用于开发时调试
-        boolean debug = "true".equalsIgnoreCase(System.getProperty("tprofiler.debug"));
+        //此时配置文件中的debug参数还未读取，因此使用-Dcombiner.debug=true来读取，用于开发时调试
+        boolean debug = "true".equalsIgnoreCase(System.getProperty("combiner.debug"));
       /*
 	   * 查找顺序：
-	   * 1. 系统参数-Dprofile.properties=/path/profile.properties
-	   * 2. 当前文件夹下的profile.properties
-	   * 3. 用户文件夹~/.tprofiler/profile.properties，如：/home/manlge/.tprofiler/profile.properties
-	   * 4. 默认jar包中的profile.properties
+	   * 1. 系统参数-Dcombiner.properties=/path/combiner.properties
+	   * 2. 当前文件夹下的combiner.properties
+	   * 3. 用户文件夹~/.combiner/combiner.properties，如：/home/xuyue/.combiner/combiner.properties
+	   * 4. 默认jar包中的combiner.properties
 	   */
         String specifiedConfigFileName = System.getProperty(CONFIG_FILE_NAME);
         File configFiles[] = {
@@ -190,7 +120,7 @@ public class ProfConfig {
             context.putAll(properties);
 
             //加载配置
-            loadConfig(new ConfigureProperties(properties, context));
+            loadConfig(context);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -201,255 +131,68 @@ public class ProfConfig {
      * @param properties
      */
     private void loadConfig(Properties properties) {
-        String startProfTime = properties.getProperty("startProfTime");
-        String endProfTime = properties.getProperty("endProfTime");
-        String logFilePath = properties.getProperty("logFilePath");
-        String methodFilePath = properties.getProperty("methodFilePath");
-        String samplerFilePath = properties.getProperty("samplerFilePath");
-        String includePackageStartsWith = properties.getProperty("includePackageStartsWith");
-        String eachProfUseTime = properties.getProperty("eachProfUseTime");
-        String eachProfIntervalTime = properties.getProperty("eachProfIntervalTime");
-        String samplerIntervalTime = properties.getProperty("samplerIntervalTime");
-        String excludePackageStartsWith = properties.getProperty("excludePackageStartsWith");
-        String needNanoTime = properties.getProperty("needNanoTime");
-        String ignoreGetSetMethod = properties.getProperty("ignoreGetSetMethod");
-        String excludeClassLoader = properties.getProperty("excludeClassLoader");
-        String debugMode = properties.getProperty("debugMode");
-        String port = properties.getProperty("port");
-        setPort(port == null ? 50000 : Integer.valueOf(port));
-        setDebugMode("true".equalsIgnoreCase(debugMode == null ? null : debugMode.trim()));
-        setExcludeClassLoader(excludeClassLoader);
-        setExcludePackageStartsWith(excludePackageStartsWith);
-        setEndProfTime(endProfTime);
-        setIncludePackageStartsWith(includePackageStartsWith);
-        setLogFilePath(logFilePath);
-        setMethodFilePath(methodFilePath);
-        setSamplerFilePath(samplerFilePath);
-        setStartProfTime(startProfTime);
-        setNeedNanoTime("true".equals(needNanoTime));
-        setIgnoreGetSetMethod("true".equals(ignoreGetSetMethod));
-        if (eachProfUseTime == null) {
-            setEachProfUseTime(5);
-        } else {
-            setEachProfUseTime(Integer.valueOf(eachProfUseTime.trim()));
-        }
-        if (eachProfIntervalTime == null) {
-            setEachProfIntervalTime(50);
-        } else {
-            setEachProfIntervalTime(Integer.valueOf(eachProfIntervalTime.trim()));
-        }
-        if (samplerIntervalTime == null) {
-            setSamplerIntervalTime(10);
-        } else {
-            setSamplerIntervalTime(Integer.valueOf(samplerIntervalTime.trim()));
-        }
+        int rate = Integer.parseInt(properties.getProperty("rate"));
+        int capacity = Integer.parseInt(properties.getProperty("capacity"));
+        int effective = Integer.parseInt(properties.getProperty("effective"));
+        int cyclicalTaskPeriod = Integer.parseInt(properties.getProperty("cyclicalTaskPeriod"));
+        int combinePool = Integer.parseInt(properties.getProperty("combinePool"));
+
+        setRate(rate);
+        setCapacity(capacity);
+        setEffective(effective);
+        setCyclicalTaskPeriod(cyclicalTaskPeriod);
+        setCombinePool(combinePool);
     }
 
-
-    /**
-     * @return
-     */
-    public String getStartProfTime() {
-        return startProfTime;
+    public static String getConfigFileName() {
+        return CONFIG_FILE_NAME;
     }
 
-    /**
-     * @param startProfTime
-     */
-    public void setStartProfTime(String startProfTime) {
-        this.startProfTime = startProfTime;
+    public File getDEFAULT_PROFILE_PATH() {
+        return DEFAULT_PROFILE_PATH;
     }
 
-    /**
-     * @return
-     */
-    public String getEndProfTime() {
-        return endProfTime;
+    public void setDEFAULT_PROFILE_PATH(File DEFAULT_PROFILE_PATH) {
+        this.DEFAULT_PROFILE_PATH = DEFAULT_PROFILE_PATH;
     }
 
-    /**
-     * @param endProfTime
-     */
-    public void setEndProfTime(String endProfTime) {
-        this.endProfTime = endProfTime;
+    public int getRate() {
+        return rate;
     }
 
-    /**
-     * @return
-     */
-    public String getLogFilePath() {
-        return logFilePath;
+    public void setRate(int rate) {
+        this.rate = rate;
     }
 
-    /**
-     * @param logFilePath
-     */
-    public void setLogFilePath(String logFilePath) {
-        this.logFilePath = logFilePath;
+    public int getCapacity() {
+        return capacity;
     }
 
-    /**
-     * @return the methodFilePath
-     */
-    public String getMethodFilePath() {
-        return methodFilePath;
+    public void setCapacity(int capacity) {
+        this.capacity = capacity;
     }
 
-    /**
-     * @param methodFilePath
-     *            the methodFilePath to set
-     */
-    public void setMethodFilePath(String methodFilePath) {
-        this.methodFilePath = methodFilePath;
+    public int getEffective() {
+        return effective;
     }
 
-    /**
-     * @return
-     */
-    public String getIncludePackageStartsWith() {
-        return includePackageStartsWith;
+    public void setEffective(int effective) {
+        this.effective = effective;
     }
 
-    /**
-     * @param includePackageStartsWith
-     */
-    public void setIncludePackageStartsWith(String includePackageStartsWith) {
-        this.includePackageStartsWith = includePackageStartsWith;
+    public int getCyclicalTaskPeriod() {
+        return cyclicalTaskPeriod;
     }
 
-    /**
-     * @return
-     */
-    public int getEachProfUseTime() {
-        return eachProfUseTime;
+    public void setCyclicalTaskPeriod(int cyclicalTaskPeriod) {
+        this.cyclicalTaskPeriod = cyclicalTaskPeriod;
     }
 
-    /**
-     * @param eachProfUseTime
-     */
-    public void setEachProfUseTime(int eachProfUseTime) {
-        this.eachProfUseTime = eachProfUseTime;
+    public int getCombinePool() {
+        return combinePool;
     }
 
-    /**
-     * @return
-     */
-    public int getEachProfIntervalTime() {
-        return eachProfIntervalTime;
-    }
-
-    /**
-     * @param eachProfIntervalTime
-     */
-    public void setEachProfIntervalTime(int eachProfIntervalTime) {
-        this.eachProfIntervalTime = eachProfIntervalTime;
-    }
-
-    /**
-     * @return
-     */
-    public String getExcludePackageStartsWith() {
-        return excludePackageStartsWith;
-    }
-
-    /**
-     * @param excludePackageStartsWith
-     */
-    public void setExcludePackageStartsWith(String excludePackageStartsWith) {
-        this.excludePackageStartsWith = excludePackageStartsWith;
-    }
-
-    /**
-     * @return
-     */
-    public boolean isNeedNanoTime() {
-        return needNanoTime;
-    }
-
-    /**
-     * @param needNanoTime
-     */
-    public void setNeedNanoTime(boolean needNanoTime) {
-        this.needNanoTime = needNanoTime;
-    }
-
-    /**
-     * @return
-     */
-    public boolean isIgnoreGetSetMethod() {
-        return ignoreGetSetMethod;
-    }
-
-    /**
-     * @param ignoreGetSetMethod
-     */
-    public void setIgnoreGetSetMethod(boolean ignoreGetSetMethod) {
-        this.ignoreGetSetMethod = ignoreGetSetMethod;
-    }
-
-    /**
-     * @param samplerFilePath
-     *            the samplerFilePath to set
-     */
-    public void setSamplerFilePath(String samplerFilePath) {
-        this.samplerFilePath = samplerFilePath;
-    }
-
-    /**
-     * @param samplerIntervalTime
-     *            the samplerIntervalTime to set
-     */
-    public void setSamplerIntervalTime(int samplerIntervalTime) {
-        this.samplerIntervalTime = samplerIntervalTime;
-    }
-
-    /**
-     * @return the samplerFilePath
-     */
-    public String getSamplerFilePath() {
-        return samplerFilePath;
-    }
-
-    /**
-     * @return the samplerIntervalTime
-     */
-    public int getSamplerIntervalTime() {
-        return samplerIntervalTime;
-    }
-
-    /**
-     * @return the excludeClassLoader
-     */
-    public String getExcludeClassLoader() {
-        return excludeClassLoader;
-    }
-
-    /**
-     * @param excludeClassLoader the excludeClassLoader to set
-     */
-    public void setExcludeClassLoader(String excludeClassLoader) {
-        this.excludeClassLoader = excludeClassLoader;
-    }
-
-    /**
-     * @return the debugMode
-     */
-    public boolean isDebugMode() {
-        return debugMode;
-    }
-
-    /**
-     * @param debugMode the debugMode to set
-     */
-    public void setDebugMode(boolean debugMode) {
-        this.debugMode = debugMode;
-    }
-
-    public int getPort() {
-        return port;
-    }
-
-    public void setPort(int port) {
-        this.port = port;
+    public void setCombinePool(int combinePool) {
+        this.combinePool = combinePool;
     }
 }
